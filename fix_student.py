@@ -1,4 +1,5 @@
-<!DOCTYPE html>
+student = open('templates/student.html', 'w', encoding='utf-8')
+student.write("""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -286,7 +287,7 @@ async function startRecording() {
 
   } catch(err) {
     if (err.name === "NotAllowedError") {
-      alert("Microphone blocked!\n\nPlease:\n1. Click lock icon in address bar\n2. Set Microphone to Allow\n3. Refresh the page");
+      alert("Microphone blocked!\\n\\nPlease:\\n1. Click lock icon in address bar\\n2. Set Microphone to Allow\\n3. Refresh the page");
     } else if (err.name === "NotFoundError") {
       alert("No microphone found!");
     } else {
@@ -378,4 +379,6 @@ function showStep(stepId) {
 }
 </script>
 </body>
-</html>
+</html>""")
+student.close()
+print("student.html fixed!")
