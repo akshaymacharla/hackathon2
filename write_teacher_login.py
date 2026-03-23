@@ -1,0 +1,45 @@
+f = open('templates/teacher_login.html', 'w', encoding='utf-8')
+f.write("""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Teacher Login</title>
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="home-page">
+<div class="hero" style="max-width:400px">
+  <div class="hero-icon">🔐</div>
+  <h1 style="font-size:1.8rem">Teacher Login</h1>
+  <p class="subtitle">Enter password to access dashboard</p>
+  <div class="panel" style="text-align:left">
+    <input type="password" id="pwd" placeholder="Enter teacher password" style="margin-bottom:1rem"/>
+    <div id="errmsg" style="color:#ef4444;margin-bottom:0.5rem;font-size:0.9rem"></div>
+    <button class="btn btn-primary btn-large" id="loginbtn">Login as Teacher</button>
+  </div>
+  <a href="/" style="color:#94a3b8;font-size:0.9rem;margin-top:1rem;display:block">Back to Home</a>
+</div>
+<script>
+document.getElementById("loginbtn").addEventListener("click", function() {
+  var pwd = document.getElementById("pwd").value;
+  if (!pwd) { document.getElementById("errmsg").textContent = "Please enter password!"; return; }
+  fetch("/api/teacher-login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password: pwd })
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d.success) {
+      window.location.href = "/teacher";
+    } else {
+      document.getElementById("errmsg").textContent = d.reason;
+    }
+  });
+});
+document.getElementById("pwd").addEventListener("keypress", function(e) {
+  if (e.key === "Enter") document.getElementById("loginbtn").click();
+});
+</script>
+</body>
+</html>""")
+f.close()
+print("teacher_login.html created!")

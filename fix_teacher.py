@@ -13,10 +13,33 @@ f.write("""<!DOCTYPE html>
   <header>
     <a href="/" class="back-btn">Home</a>
     <h1>Teacher Dashboard</h1>
+    <button class="btn btn-small" id="logoutbtn" style="width:auto;background:#ef4444;color:white;border:none">Logout</button>
   </header>
+
+  <!-- Register Students Section -->
+  <div class="panel">
+    <h2>Register Students</h2>
+    <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;flex-wrap:wrap">
+      <input type="text" id="reg-roll" placeholder="Roll No (e.g. CS001)" style="flex:1;min-width:120px"/>
+      <input type="text" id="reg-name" placeholder="Student Name" style="flex:2;min-width:150px"/>
+    </div>
+    <button class="btn btn-mic btn-large" id="reg-record-btn">🎤 Record Voice</button>
+    <div id="reg-status" style="display:none;color:#ef4444;margin:0.5rem 0">🔴 Recording 5 sec...</div>
+    <div class="transcript-box" id="reg-transcript">Voice will be captured here...</div>
+    <div class="panel hidden" id="reg-save-panel">
+      <button class="btn btn-primary" id="reg-save-btn">✅ Save Student</button>
+    </div>
+    <div id="reg-msg" style="margin-top:0.5rem;font-size:0.9rem"></div>
+    <div style="margin-top:1rem">
+      <button class="btn btn-secondary" id="load-students-btn">Refresh Student List</button>
+      <div id="students-list" style="margin-top:0.5rem"></div>
+    </div>
+  </div>
+
+  <!-- Session Panel -->
   <div class="panel">
     <h2>Attendance Session</h2>
-    <button class="btn btn-primary btn-large" id="startbtn">Start Attendance Session</button>
+    <button class="btn btn-primary btn-large" id="startbtn">🚀 Start Attendance Session</button>
     <div id="qr-section" style="display:none;margin-top:1rem">
       <div class="qr-wrapper">
         <div id="qr-code"></div>
@@ -26,9 +49,11 @@ f.write("""<!DOCTYPE html>
           <div class="timer-text" id="timer-text">60s remaining</div>
         </div>
       </div>
-      <button class="btn btn-secondary" id="newqrbtn">Generate New QR</button>
+      <button class="btn btn-secondary" id="newqrbtn">🔄 Generate New QR</button>
     </div>
   </div>
+
+  <!-- Live Stats -->
   <div class="panel">
     <h2>Live Attendance</h2>
     <div class="stats-grid">
@@ -36,10 +61,12 @@ f.write("""<!DOCTYPE html>
       <div class="stat-card stat-absent"><div class="stat-num" id="absent-count">0</div><div class="stat-label">Absent</div></div>
       <div class="stat-card stat-pct"><div class="stat-num" id="pct-count">0%</div><div class="stat-label">Rate</div></div>
     </div>
-    <div id="present-list" style="margin-top:1rem"></div>
-    <button class="btn btn-secondary" id="refreshbtn">Refresh Stats</button>
-    <button class="btn btn-warning" id="absentbtn">Finalize and Mark Absents</button>
+    <div id="present-list" style="margin-top:0.5rem"></div>
+    <button class="btn btn-secondary" id="refreshbtn">🔄 Refresh</button>
+    <button class="btn btn-warning" id="absentbtn">📋 Finalize and Mark Absents</button>
   </div>
+
+  <!-- Voice Query -->
   <div class="panel">
     <h2>Voice Query Dashboard</h2>
     <div class="voice-examples">
@@ -49,22 +76,28 @@ f.write("""<!DOCTYPE html>
       <span id="q4">Show leaderboard</span>
     </div>
     <div class="voice-input-row">
-      <button class="btn btn-mic" id="micbtn">Speak Query</button>
+      <button class="btn btn-mic" id="micbtn">🎤 Speak</button>
       <input type="text" id="query-input" placeholder="Or type your query..."/>
       <button class="btn btn-primary" id="askbtn">Ask</button>
     </div>
     <div class="response-box" id="query-response"></div>
   </div>
+
+  <!-- Weekly Summary -->
   <div class="panel">
     <h2>Weekly Summary</h2>
-    <button class="btn btn-primary" id="weeklybtn">Get Voice Summary</button>
+    <button class="btn btn-primary" id="weeklybtn">🔊 Get Voice Summary</button>
     <div id="weekly-chart" class="weekly-chart"></div>
   </div>
+
+  <!-- Leaderboard -->
   <div class="panel">
     <h2>Leaderboard</h2>
     <button class="btn btn-secondary" id="lbbtn">Refresh</button>
     <div id="leaderboard-list" class="leaderboard-list"></div>
   </div>
+
+  <!-- Parent Alerts -->
   <div class="panel" id="alerts-panel" style="display:none">
     <h2>Parent Alerts</h2>
     <div id="alerts-list"></div>
@@ -74,23 +107,138 @@ f.write("""<!DOCTYPE html>
 <script>
 var currentSessionId = null;
 var timerInterval = null;
+var regBlob = null;
+var regRec = null;
+var regChunks = [];
+var regWords = "";
 
+// Logout
+document.getElementById("logoutbtn").addEventListener("click", function() {
+  fetch("/api/teacher-logout", { method: "POST" }).then(function() {
+    window.location.href = "/teacher-login";
+  });
+});
+
+// Register student voice
+document.getElementById("reg-record-btn").addEventListener("click", function() {
+  var roll = document.getElementById("reg-roll").value.trim().toUpperCase();
+  var name = document.getElementById("reg-name").value.trim();
+  if (!roll || !name) { alert("Enter roll number and name first!"); return; }
+  if (!navigator.mediaDevices) { alert("Use Chrome browser!"); return; }
+  navigator.mediaDevices.getUserMedia({audio:true}).then(function(stream) {
+    document.getElementById("reg-record-btn").textContent = "🔴 Recording...";
+    document.getElementById("reg-status").style.display = "block";
+    document.getElementById("reg-transcript").textContent = "Listening...";
+    if (window.webkitSpeechRecognition || window.SpeechRecognition) {
+      var SR = window.webkitSpeechRecognition || window.SpeechRecognition;
+      var r = new SR();
+      r.lang = "en-IN";
+      r.onresult = function(e) {
+        regWords = e.results[0][0].transcript;
+        document.getElementById("reg-transcript").textContent = regWords;
+      };
+      r.onerror = function() {
+        regWords = name;
+        document.getElementById("reg-transcript").textContent = "Voice captured!";
+      };
+      try { r.start(); } catch(e) { regWords = name; }
+    } else {
+      regWords = name;
+      document.getElementById("reg-transcript").textContent = "Voice captured!";
+    }
+    regRec = new MediaRecorder(stream);
+    regChunks = [];
+    regRec.ondataavailable = function(e) { if(e.data.size>0) regChunks.push(e.data); };
+    regRec.onstop = function() {
+      regBlob = new Blob(regChunks, {type:"audio/webm"});
+      stream.getTracks().forEach(function(t){t.stop();});
+      document.getElementById("reg-save-panel").classList.remove("hidden");
+      document.getElementById("reg-status").style.display = "none";
+      document.getElementById("reg-record-btn").textContent = "🎤 Record Again";
+    };
+    regRec.start();
+    setTimeout(function() { if(regRec && regRec.state!=="inactive") regRec.stop(); }, 5000);
+  }).catch(function(err) { alert("Microphone error: " + err.message); });
+});
+
+document.getElementById("reg-save-btn").addEventListener("click", function() {
+  var roll = document.getElementById("reg-roll").value.trim().toUpperCase();
+  var name = document.getElementById("reg-name").value.trim();
+  if (!roll || !name) { alert("Enter roll number and name!"); return; }
+  var msg = document.getElementById("reg-msg");
+  msg.textContent = "Saving...";
+  function send(b64) {
+    fetch("/api/register-student", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({roll_no: roll, name: name, audio: b64, spoken_text: regWords})
+    }).then(function(r){return r.json();}).then(function(d) {
+      if (d.success) {
+        msg.textContent = "✅ " + d.message;
+        msg.style.color = "#4ade80";
+        document.getElementById("reg-roll").value = "";
+        document.getElementById("reg-name").value = "";
+        document.getElementById("reg-transcript").textContent = "Voice will be captured here...";
+        document.getElementById("reg-save-panel").classList.add("hidden");
+        document.getElementById("reg-record-btn").textContent = "🎤 Record Voice";
+        regBlob = null; regWords = "";
+        loadStudents();
+      } else {
+        msg.textContent = "❌ " + d.reason;
+        msg.style.color = "#ef4444";
+      }
+    });
+  }
+  if (regBlob) {
+    var fr = new FileReader();
+    fr.onload = function(e) { send(e.target.result.split(",")[1]); };
+    fr.readAsDataURL(regBlob);
+  } else { send(""); }
+});
+
+document.getElementById("load-students-btn").addEventListener("click", loadStudents);
+
+function loadStudents() {
+  fetch("/api/student-list").then(function(r){return r.json();}).then(function(d) {
+    var div = document.getElementById("students-list");
+    if (!d.students || d.students.length === 0) {
+      div.innerHTML = "<p style='color:#94a3b8'>No students registered yet</p>";
+      return;
+    }
+    var html = "";
+    for (var i=0; i<d.students.length; i++) {
+      var s = d.students[i];
+      html += "<div class='leader-row'>";
+      html += "<span class='medal'>" + (i+1) + "</span>";
+      html += "<span class='leader-name'>" + s.name + " (" + s.roll_no + ")</span>";
+      html += "<span style='font-size:0.82rem;color:" + (s.has_voice ? "#4ade80" : "#f59e0b") + "'>" + (s.has_voice ? "✅ Registered" : "⚠️ No Voice") + "</span>";
+      html += "<button data-roll='" + s.roll_no + "' class='delbtn' style='margin-left:8px;padding:4px 10px;background:#ef4444;color:white;border:none;border-radius:8px;cursor:pointer'>Remove</button>";
+      html += "</div>";
+    }
+    div.innerHTML = html;
+    var btns = div.querySelectorAll(".delbtn");
+    for (var j=0; j<btns.length; j++) {
+      btns[j].addEventListener("click", function() {
+        var roll = this.getAttribute("data-roll");
+        if (!confirm("Remove " + roll + "?")) return;
+        fetch("/api/delete-student", {
+          method: "POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({roll_no: roll})
+        }).then(function(){loadStudents();});
+      });
+    }
+  });
+}
+
+// Session
 document.getElementById("startbtn").addEventListener("click", startSession);
 document.getElementById("newqrbtn").addEventListener("click", startSession);
-document.getElementById("refreshbtn").addEventListener("click", refreshStats);
-document.getElementById("absentbtn").addEventListener("click", markAbsents);
-document.getElementById("askbtn").addEventListener("click", askQuery);
-document.getElementById("weeklybtn").addEventListener("click", getWeeklySummary);
-document.getElementById("lbbtn").addEventListener("click", loadLeaderboard);
-document.getElementById("micbtn").addEventListener("click", startVoice);
-document.getElementById("q1").addEventListener("click", function() { document.getElementById("query-input").value = "How many students are present?"; });
-document.getElementById("q2").addEventListener("click", function() { document.getElementById("query-input").value = "Who is absent today?"; });
-document.getElementById("q3").addEventListener("click", function() { document.getElementById("query-input").value = "What is the mood report?"; });
-document.getElementById("q4").addEventListener("click", function() { document.getElementById("query-input").value = "Show leaderboard"; });
 
 async function startSession() {
   var res = await fetch("/api/start-session", { method: "POST" });
   var data = await res.json();
+  if (!data.success && data.reason) { alert(data.reason); return; }
   currentSessionId = data.session_id;
   document.getElementById("qr-section").style.display = "block";
   document.getElementById("session-id-display").textContent = "Session: " + data.session_id;
@@ -110,16 +258,16 @@ function startTimer(seconds) {
   var text = document.getElementById("timer-text");
   timerInterval = setInterval(function() {
     remaining--;
-    bar.style.width = ((remaining / seconds) * 100) + "%";
-    bar.style.background = remaining > 20 ? "#4ade80" : remaining > 10 ? "#fb923c" : "#f87171";
-    text.textContent = remaining + "s remaining";
-    if (remaining <= 0) {
-      clearInterval(timerInterval);
-      text.textContent = "Session expired";
-      speak("The QR code has expired. Generate a new one if needed.");
-    }
+    bar.style.width = ((remaining/seconds)*100)+"%";
+    bar.style.background = remaining>20?"#4ade80":remaining>10?"#fb923c":"#f87171";
+    text.textContent = remaining+"s remaining";
+    if (remaining<=0) { clearInterval(timerInterval); text.textContent="Session expired"; }
   }, 1000);
 }
+
+// Stats
+document.getElementById("refreshbtn").addEventListener("click", refreshStats);
+document.getElementById("absentbtn").addEventListener("click", markAbsents);
 
 async function refreshStats() {
   try {
@@ -129,14 +277,14 @@ async function refreshStats() {
     var lbRes = await fetch("/api/leaderboard");
     var lbData = await lbRes.json();
     var present = lbData.leaderboard.length;
-    var absent = total - present;
+    var absent = Math.max(0, total - present);
     document.getElementById("present-count").textContent = present;
-    document.getElementById("absent-count").textContent = absent < 0 ? 0 : absent;
-    document.getElementById("pct-count").textContent = total > 0 ? Math.round((present/total)*100) + "%" : "0%";
+    document.getElementById("absent-count").textContent = absent;
+    document.getElementById("pct-count").textContent = total>0 ? Math.round((present/total)*100)+"%" : "0%";
     if (lbData.leaderboard.length > 0) {
-      var html = "<p style='color:#94a3b8;font-size:0.85rem;margin-bottom:0.5rem'>Present students:</p>";
+      var html = "<p style='color:#94a3b8;font-size:0.85rem;margin-bottom:0.5rem'>Present:</p>";
       for (var i=0; i<lbData.leaderboard.length; i++) {
-        html += "<div style='padding:4px 0;font-size:0.9rem'>✅ " + lbData.leaderboard[i].name + "</div>";
+        html += "<div style='padding:4px 0;font-size:0.9rem'>✅ " + lbData.leaderboard[i].name + " (" + lbData.leaderboard[i].roll_no + ")</div>";
       }
       document.getElementById("present-list").innerHTML = html;
     }
@@ -148,25 +296,31 @@ async function markAbsents() {
   var data = await res.json();
   if (data.parent_alerts.length > 0) {
     document.getElementById("alerts-panel").style.display = "block";
-    var list = document.getElementById("alerts-list");
     var html = "";
     for (var i=0; i<data.parent_alerts.length; i++) {
       var a = data.parent_alerts[i];
-      html += "<div class='alert-card'><strong>" + a.name + "</strong> absent " + a.days + " days</div>";
+      html += "<div class='alert-card'><strong>" + a.name + " (" + a.roll_no + ")</strong> absent " + a.days + " days</div>";
     }
-    list.innerHTML = html;
+    document.getElementById("alerts-list").innerHTML = html;
   }
   await speak("Absents marked. " + data.absents.length + " students are absent today.");
   refreshStats();
 }
 
+// Voice Query
+document.getElementById("askbtn").addEventListener("click", askQuery);
+document.getElementById("micbtn").addEventListener("click", startVoice);
+document.getElementById("q1").addEventListener("click", function() { document.getElementById("query-input").value = "How many students are present?"; });
+document.getElementById("q2").addEventListener("click", function() { document.getElementById("query-input").value = "Who is absent today?"; });
+document.getElementById("q3").addEventListener("click", function() { document.getElementById("query-input").value = "What is the mood report?"; });
+document.getElementById("q4").addEventListener("click", function() { document.getElementById("query-input").value = "Show leaderboard"; });
+
 async function askQuery() {
   var query = document.getElementById("query-input").value;
   if (!query) return;
   var res = await fetch("/api/teacher-query", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query: query })
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({query: query})
   });
   var data = await res.json();
   document.getElementById("query-response").textContent = data.response;
@@ -174,59 +328,50 @@ async function askQuery() {
 }
 
 function startVoice() {
-  if (!window.webkitSpeechRecognition && !window.SpeechRecognition) {
-    alert("Speech recognition not supported! Type your query instead.");
-    return;
-  }
+  if (!window.webkitSpeechRecognition && !window.SpeechRecognition) { alert("Type your query instead!"); return; }
   var SR = window.webkitSpeechRecognition || window.SpeechRecognition;
   var r = new SR();
   r.lang = "en-IN";
-  r.onresult = function(e) {
-    document.getElementById("query-input").value = e.results[0][0].transcript;
-    askQuery();
-  };
+  r.onresult = function(e) { document.getElementById("query-input").value = e.results[0][0].transcript; askQuery(); };
   r.start();
-  document.getElementById("micbtn").textContent = "Listening...";
-  r.onend = function() { document.getElementById("micbtn").textContent = "Speak Query"; };
+  document.getElementById("micbtn").textContent = "🔴 Listening...";
+  r.onend = function() { document.getElementById("micbtn").textContent = "🎤 Speak"; };
 }
 
-async function getWeeklySummary() {
+// Weekly
+document.getElementById("weeklybtn").addEventListener("click", async function() {
   var res = await fetch("/api/weekly-summary");
   var data = await res.json();
   var html = "";
   for (var i=0; i<data.days.length; i++) {
     var d = data.days[i];
-    var color = d.percentage > 70 ? "#4ade80" : d.percentage > 40 ? "#fb923c" : "#f87171";
-    html += "<div class='week-bar-wrap'>";
-    html += "<div class='week-bar' style='height:" + d.percentage + "px;background:" + color + "'></div>";
-    html += "<div class='week-label'>" + d.day.slice(0,3) + "</div>";
-    html += "<div class='week-pct'>" + d.percentage + "%</div>";
-    html += "</div>";
+    var color = d.percentage>70?"#4ade80":d.percentage>40?"#fb923c":"#f87171";
+    html += "<div class='week-bar-wrap'><div class='week-bar' style='height:"+d.percentage+"px;background:"+color+"'></div><div class='week-label'>"+d.day.slice(0,3)+"</div><div class='week-pct'>"+d.percentage+"%</div></div>";
   }
   document.getElementById("weekly-chart").innerHTML = html;
   await speak(data.summary);
-}
+});
+
+// Leaderboard
+document.getElementById("lbbtn").addEventListener("click", loadLeaderboard);
 
 async function loadLeaderboard() {
   var res = await fetch("/api/leaderboard");
   var data = await res.json();
-  var medals = ["1st","2nd","3rd"];
+  var medals = ["🥇","🥈","🥉"];
   var html = "";
   if (data.leaderboard.length === 0) {
     html = "<p style='color:#94a3b8'>No data yet</p>";
   } else {
     for (var i=0; i<Math.min(data.leaderboard.length,5); i++) {
       var e = data.leaderboard[i];
-      html += "<div class='leader-row'>";
-      html += "<span class='medal'>" + (medals[i] || (i+1)+".") + "</span>";
-      html += "<span class='leader-name'>" + e.name + "</span>";
-      html += "<span class='leader-days'>" + e.days + " days streak:" + e.streak + "</span>";
-      html += "</div>";
+      html += "<div class='leader-row'><span class='medal'>"+(medals[i]||(i+1)+".")+"</span><span class='leader-name'>"+e.name+" ("+e.roll_no+")</span><span class='leader-days'>"+e.days+" days 🔥"+e.streak+"</span></div>";
     }
   }
   document.getElementById("leaderboard-list").innerHTML = html;
 }
 
+loadStudents();
 refreshStats();
 loadLeaderboard();
 </script>

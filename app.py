@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, session, redirect
 import uuid, time, random, os
 from datetime import datetime, timedelta
 from collections import defaultdict
@@ -16,7 +16,11 @@ mood_log = {}
 failed_attempts = defaultdict(int)
 parent_alerts = {}
 
+# Student list — roll_no → name
+STUDENT_REGISTRY = {}  # {"CS001": "Rahul Kumar", "CS002": "Priya Sharma"}
+
 MURF_API_KEY = os.getenv("MURF_API_KEY", "YOUR_MURF_API_KEY_HERE")
+TEACHER_PASSWORD = os.getenv("TEACHER_PASSWORD", "teacher123")
 
 REPEAT_PHRASES = [
     "Blue elephant runs fast",
@@ -26,8 +30,6 @@ REPEAT_PHRASES = [
     "Orange tiger roars loud",
 ]
 
-STUDENT_LIST = []
-
 def cosine_similarity(a, b):
     a, b = np.array(a), np.array(b)
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-8))
@@ -35,50 +37,76 @@ def cosine_similarity(a, b):
 def fake_embedding():
     return (np.random.rand(256) * 0.5 + 0.5).tolist()
 
+# ── Pages ──────────────────────────────────────────────────────────
 @app.route("/")
 def index():
     return render_template("index.html")
 
 @app.route("/teacher")
 def teacher():
+    if not session.get("is_teacher"):
+        return redirect("/teacher-login")
     return render_template("teacher.html")
+
+@app.route("/teacher-login")
+def teacher_login():
+    return render_template("teacher_login.html")
 
 @app.route("/student")
 def student():
     return render_template("student.html")
 
-@app.route("/register")
-def register_page():
-    return render_template("register.html")
+# ── Teacher Auth ───────────────────────────────────────────────────
+@app.route("/api/teacher-login", methods=["POST"])
+def do_teacher_login():
+    data = request.json
+    password = data.get("password", "")
+    if password == TEACHER_PASSWORD:
+        session["is_teacher"] = True
+        return jsonify({"success": True})
+    return jsonify({"success": False, "reason": "Wrong password!"})
 
+@app.route("/api/teacher-logout", methods=["POST"])
+def teacher_logout():
+    session.pop("is_teacher", None)
+    return jsonify({"success": True})
+
+# ── Student Registration (Teacher Only) ───────────────────────────
 @app.route("/api/register-student", methods=["POST"])
 def register_student():
+    if not session.get("is_teacher"):
+        return jsonify({"success": False, "reason": "Only teacher can register students!"})
     data = request.json
+    roll_no = data.get("roll_no", "").strip().upper()
     name = data.get("name", "").strip()
-    if not name:
-        return jsonify({"success": False, "reason": "Name required"})
-    if name not in STUDENT_LIST:
-        STUDENT_LIST.append(name)
-    voice_profiles[name] = fake_embedding()
-    return jsonify({"success": True, "message": name + " registered successfully!"})
+    if not roll_no or not name:
+        return jsonify({"success": False, "reason": "Roll number and name required!"})
+    STUDENT_REGISTRY[roll_no] = name
+    voice_profiles[roll_no] = fake_embedding()
+    return jsonify({"success": True, "message": name + " (" + roll_no + ") registered!"})
 
 @app.route("/api/student-list", methods=["GET"])
 def student_list():
-    students = [{"name": s, "has_voice": s in voice_profiles} for s in STUDENT_LIST]
+    students = [{"roll_no": k, "name": v, "has_voice": k in voice_profiles} for k, v in STUDENT_REGISTRY.items()]
     return jsonify({"students": students})
 
 @app.route("/api/delete-student", methods=["POST"])
 def delete_student():
+    if not session.get("is_teacher"):
+        return jsonify({"success": False, "reason": "Only teacher can delete students!"})
     data = request.json
-    name = data.get("name", "")
-    if name in STUDENT_LIST:
-        STUDENT_LIST.remove(name)
-    if name in voice_profiles:
-        del voice_profiles[name]
+    roll_no = data.get("roll_no", "").strip().upper()
+    if roll_no in STUDENT_REGISTRY:
+        del STUDENT_REGISTRY[roll_no]
+    if roll_no in voice_profiles:
+        del voice_profiles[roll_no]
     return jsonify({"success": True})
 
+# ── Session Management ─────────────────────────────────────────────
 @app.route("/api/start-session", methods=["POST"])
 def start_session():
+    if not session.get("is_teacher"):
+        return jsonify({"success": False, "reason": "Only teacher can start sessions!"})
     session_id = str(uuid.uuid4())[:8].upper()
     expiry = time.time() + 60
     sessions[session_id] = {
@@ -93,26 +121,27 @@ def start_session():
 def validate_session():
     data = request.json
     sid = data.get("session_id", "").strip().upper()
-    student_name = data.get("student_name", "")
+    roll_no = data.get("roll_no", "").strip().upper()
     if sid not in sessions:
         return jsonify({"valid": False, "reason": "Invalid session ID"})
     s = sessions[sid]
     if time.time() > s["expiry"]:
         s["active"] = False
-        return jsonify({"valid": False, "reason": "Session expired"})
-    if student_name in s["disqualified"]:
-        return jsonify({"valid": False, "reason": "You are disqualified"})
+        return jsonify({"valid": False, "reason": "Session expired! Ask teacher for new QR."})
+    if roll_no and roll_no in s["disqualified"]:
+        return jsonify({"valid": False, "reason": "You are disqualified from this session!"})
     return jsonify({"valid": True, "session_id": sid})
 
 @app.route("/api/disqualify", methods=["POST"])
 def disqualify():
     data = request.json
     sid = data.get("session_id", "").upper()
-    name = data.get("student_name", "")
-    if sid in sessions and name:
-        sessions[sid]["disqualified"].append(name)
+    roll_no = data.get("roll_no", "").upper()
+    if sid in sessions and roll_no:
+        sessions[sid]["disqualified"].append(roll_no)
     return jsonify({"disqualified": True})
 
+# ── Challenge ──────────────────────────────────────────────────────
 @app.route("/api/challenge", methods=["GET"])
 def get_challenge():
     ctype = random.choice(["math", "math", "repeat", "date"])
@@ -121,14 +150,15 @@ def get_challenge():
         b = random.randint(2, 10)
         op = random.choice(["plus", "minus"])
         answer = str(a + b) if op == "plus" else str(a - b)
-        return jsonify({"type": "math", "question": f"What is {a} {op} {b}?", "answer": answer})
+        return jsonify({"type": "math", "question": "What is " + str(a) + " " + op + " " + str(b) + "?", "answer": answer})
     elif ctype == "repeat":
         phrase = random.choice(REPEAT_PHRASES)
-        return jsonify({"type": "repeat", "question": f"Repeat after me: {phrase}", "answer": phrase})
+        return jsonify({"type": "repeat", "question": "Repeat after me: " + phrase, "answer": phrase})
     else:
         today = datetime.now().strftime("%B %d %Y")
         return jsonify({"type": "date", "question": "Say today's date", "answer": today})
 
+# ── Mood ───────────────────────────────────────────────────────────
 @app.route("/api/mood", methods=["POST"])
 def log_mood():
     data = request.json
@@ -139,9 +169,11 @@ def log_mood():
     mood_log[today].append(mood)
     return jsonify({"logged": True, "mood": mood})
 
+# ── Verify Attendance ──────────────────────────────────────────────
 @app.route("/api/verify", methods=["POST"])
 def verify_attendance():
     data = request.json
+    roll_no = data.get("roll_no", "").strip().upper()
     name = data.get("name", "").strip()
     spoken_text = data.get("spoken_text", "").lower()
     challenge_answer = data.get("challenge_answer", "").lower()
@@ -150,22 +182,19 @@ def verify_attendance():
     today = datetime.now().strftime("%Y-%m-%d")
 
     if session_id not in sessions:
-        return jsonify({"success": False, "reason": "Invalid session"})
+        return jsonify({"success": False, "reason": "Invalid session!"})
     s = sessions[session_id]
     if time.time() > s["expiry"]:
-        return jsonify({"success": False, "reason": "Session expired"})
-    if name in s["disqualified"]:
-        return jsonify({"success": False, "reason": "You are disqualified"})
+        return jsonify({"success": False, "reason": "Session expired!"})
+    if roll_no in s["disqualified"]:
+        return jsonify({"success": False, "reason": "You are disqualified!"})
 
-    # Check if student is registered
-    if name not in STUDENT_LIST:
-        return jsonify({"success": False, "reason": name + " is not registered! Please register first at /register"})
+    # Check if roll number is registered
+    if roll_no not in STUDENT_REGISTRY:
+        return jsonify({"success": False, "reason": "Roll number " + roll_no + " not registered! Contact your teacher."})
 
-    # Check if voice is registered
-    if name not in voice_profiles:
-        return jsonify({"success": False, "reason": name + " has no voice registered! Please register voice first."})
-
-    matched_name = name
+    # Get student name from registry
+    registered_name = STUDENT_REGISTRY[roll_no]
 
     # Challenge check
     challenge_passed = False
@@ -184,102 +213,106 @@ def verify_attendance():
         challenge_passed = True
 
     if not challenge_passed:
-        failed_attempts[name] += 1
-        if failed_attempts[name] >= 2:
-            s["disqualified"].append(name)
-            return jsonify({"success": False, "reason": "Too many failed attempts. Suspicious activity detected!", "suspicious": True})
-        return jsonify({"success": False, "reason": "Challenge answer incorrect. Try again."})
+        failed_attempts[roll_no] += 1
+        if failed_attempts[roll_no] >= 2:
+            s["disqualified"].append(roll_no)
+            return jsonify({"success": False, "reason": "Too many failed attempts! Suspicious activity.", "suspicious": True})
+        return jsonify({"success": False, "reason": "Wrong answer! Try again."})
 
-    # Voice biometric check
+    # Voice check
     current_embedding = fake_embedding()
     similarity = 1.0
-    if name in voice_profiles:
-        similarity = cosine_similarity(voice_profiles[name], current_embedding)
-
-    # Adaptive learning
-    if similarity > 0.80:
-        old = np.array(voice_profiles[name])
-        new = np.array(current_embedding)
-        voice_profiles[name] = ((old + new) / 2).tolist()
+    if roll_no in voice_profiles:
+        similarity = cosine_similarity(voice_profiles[roll_no], current_embedding)
+        if similarity > 0.80:
+            old = np.array(voice_profiles[roll_no])
+            new = np.array(current_embedding)
+            voice_profiles[roll_no] = ((old + new) / 2).tolist()
 
     if today not in attendance:
         attendance[today] = {}
-    if name in attendance[today]:
-        return jsonify({"success": False, "reason": "Attendance already marked today"})
+    if roll_no in attendance[today]:
+        return jsonify({"success": False, "reason": "Attendance already marked today!"})
 
     yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-    if yesterday in attendance and name in attendance[yesterday]:
-        streaks[name] = streaks.get(name, 0) + 1
+    if yesterday in attendance and roll_no in attendance[yesterday]:
+        streaks[roll_no] = streaks.get(roll_no, 0) + 1
     else:
-        streaks[name] = 1
+        streaks[roll_no] = 1
 
-    current_streak = streaks[name]
-    leaderboard[name] = leaderboard.get(name, 0) + 1
-    attendance[today][name] = {
+    current_streak = streaks[roll_no]
+    leaderboard[roll_no] = leaderboard.get(roll_no, 0) + 1
+    attendance[today][roll_no] = {
+        "name": registered_name,
         "status": "Present",
         "time": datetime.now().strftime("%H:%M:%S"),
         "streak": current_streak,
         "mood": data.get("mood", "unknown")
     }
 
-    parent_alerts[name] = 0
-    failed_attempts[name] = 0
+    parent_alerts[roll_no] = 0
+    failed_attempts[roll_no] = 0
 
     streak_msg = ""
     if current_streak >= 10:
-        streak_msg = f" Amazing! This is your {current_streak}th consecutive day. You are on fire!"
+        streak_msg = " Amazing! " + str(current_streak) + " days in a row! You are on fire!"
     elif current_streak >= 5:
-        streak_msg = f" Great job! {current_streak} days in a row!"
+        streak_msg = " Great job! " + str(current_streak) + " days in a row!"
 
     late_msg = ""
     hour = datetime.now().hour
     minute = datetime.now().minute
     if hour > 9 or (hour == 9 and minute > 10):
-        late_msg = f" Note: You are {(hour*60+minute)-(9*60+10)} minutes late."
+        late_msg = " Note: You are " + str((hour*60+minute)-(9*60+10)) + " minutes late."
 
-    confirmation = f"{name}, aapki attendance mark ho gayi hai. Your attendance is confirmed!{streak_msg}{late_msg}"
+    confirmation = registered_name + ", aapki attendance mark ho gayi hai. Your attendance is confirmed!" + streak_msg + late_msg
+
+    ranked = sorted(leaderboard, key=leaderboard.get, reverse=True)
+    rank = ranked.index(roll_no) + 1 if roll_no in ranked else 1
 
     return jsonify({
         "success": True,
-        "name": name,
+        "name": registered_name,
+        "roll_no": roll_no,
         "streak": current_streak,
-        "similarity": round(similarity, 2),
         "confirmation": confirmation,
         "late": bool(late_msg),
-        "leaderboard_rank": sorted(leaderboard, key=leaderboard.get, reverse=True).index(name) + 1
+        "leaderboard_rank": rank
     })
 
+# ── Teacher Queries ────────────────────────────────────────────────
 @app.route("/api/teacher-query", methods=["POST"])
 def teacher_query():
     data = request.json
     query = data.get("query", "").lower()
     today = datetime.now().strftime("%Y-%m-%d")
     today_att = attendance.get(today, {})
-    total = len(STUDENT_LIST)
+    total = len(STUDENT_REGISTRY)
     present = len(today_att)
-    absent_list = [s for s in STUDENT_LIST if s not in today_att]
+    absent_list = [STUDENT_REGISTRY[r] + " (" + r + ")" for r in STUDENT_REGISTRY if r not in today_att]
 
     if "how many" in query or "count" in query:
-        response = f"{present} out of {total} students are present today."
+        response = str(present) + " out of " + str(total) + " students are present today."
     elif "absent" in query:
-        response = f"{len(absent_list)} students are absent: {', '.join(absent_list)}." if absent_list else "All students are present!"
+        response = str(len(absent_list)) + " students are absent: " + ", ".join(absent_list) + "." if absent_list else "All students are present!"
     elif "present" in query:
-        present_list = list(today_att.keys())
-        response = f"Present: {', '.join(present_list)}." if present_list else "No students present yet."
-    elif "mood" in query or "feeling" in query:
+        present_list = [attendance[today][r]["name"] + " (" + r + ")" for r in today_att]
+        response = "Present: " + ", ".join(present_list) + "." if present_list else "No students present yet."
+    elif "mood" in query:
         moods = mood_log.get(today, [])
         if moods:
-            response = f"Mood report: {moods.count('good')} good, {moods.count('okay')} okay, {moods.count('tired')} tired."
+            response = "Mood report: " + str(moods.count("good")) + " good, " + str(moods.count("okay")) + " okay, " + str(moods.count("tired")) + " tired."
         else:
             response = "No mood data yet today."
     elif "percentage" in query or "rate" in query:
         pct = round((present / total) * 100) if total > 0 else 0
-        response = f"Attendance rate is {pct} percent."
-    elif "leaderboard" in query or "champion" in query or "top" in query:
+        response = "Attendance rate is " + str(pct) + " percent."
+    elif "leaderboard" in query or "champion" in query:
         top3 = sorted(leaderboard, key=leaderboard.get, reverse=True)[:3]
-        response = f"Champions: {', '.join(top3)}!" if top3 else "No leaderboard data yet."
+        names = [STUDENT_REGISTRY.get(r, r) for r in top3]
+        response = "Champions: " + ", ".join(names) + "!" if names else "No leaderboard data yet."
     else:
-        response = f"{present} of {total} present. {len(absent_list)} absent."
+        response = str(present) + " of " + str(total) + " present. " + str(len(absent_list)) + " absent."
 
     return jsonify({"response": response})
 
@@ -287,22 +320,25 @@ def teacher_query():
 def mark_absents():
     today = datetime.now().strftime("%Y-%m-%d")
     today_att = attendance.get(today, {})
-    absent_students = [s for s in STUDENT_LIST if s not in today_att]
+    absent_rolls = [r for r in STUDENT_REGISTRY if r not in today_att]
     alerts = []
-    for name in absent_students:
-        parent_alerts[name] = parent_alerts.get(name, 0) + 1
-        if parent_alerts[name] >= 3:
+    for roll_no in absent_rolls:
+        parent_alerts[roll_no] = parent_alerts.get(roll_no, 0) + 1
+        if parent_alerts[roll_no] >= 3:
+            name = STUDENT_REGISTRY.get(roll_no, roll_no)
             alerts.append({
                 "name": name,
-                "days": parent_alerts[name],
-                "message": f"Dear parent, your child {name} has been absent for {parent_alerts[name]} consecutive days. Please contact the college."
+                "roll_no": roll_no,
+                "days": parent_alerts[roll_no],
+                "message": "Dear parent, your child " + name + " has been absent for " + str(parent_alerts[roll_no]) + " consecutive days."
             })
-        streaks[name] = 0
-    return jsonify({"absents": absent_students, "parent_alerts": alerts})
+        streaks[roll_no] = 0
+    absent_names = [STUDENT_REGISTRY.get(r, r) for r in absent_rolls]
+    return jsonify({"absents": absent_names, "parent_alerts": alerts})
 
 @app.route("/api/weekly-summary", methods=["GET"])
 def weekly_summary():
-    total = len(STUDENT_LIST)
+    total = len(STUDENT_REGISTRY)
     days = []
     total_pct = 0
     for i in range(7):
@@ -316,15 +352,16 @@ def weekly_summary():
     best_day = max(days, key=lambda x: x["percentage"])
     worst_day = min(days, key=lambda x: x["percentage"])
     top3 = sorted(leaderboard, key=leaderboard.get, reverse=True)[:3]
-    summary = f"Last week the class had {avg} percent average attendance. {best_day['day']} was highest, {worst_day['day']} was lowest."
-    if top3:
-        summary += f" Champions: {', '.join(top3)}."
+    names = [STUDENT_REGISTRY.get(r, r) for r in top3]
+    summary = "Last week the class had " + str(avg) + " percent average attendance. " + best_day["day"] + " was highest, " + worst_day["day"] + " was lowest."
+    if names:
+        summary += " Champions: " + ", ".join(names) + "."
     return jsonify({"summary": summary, "days": days, "average": avg})
 
 @app.route("/api/leaderboard", methods=["GET"])
 def get_leaderboard():
     ranked = sorted(leaderboard.items(), key=lambda x: x[1], reverse=True)
-    return jsonify({"leaderboard": [{"name": n, "days": d, "streak": streaks.get(n, 0)} for n, d in ranked]})
+    return jsonify({"leaderboard": [{"roll_no": r, "name": STUDENT_REGISTRY.get(r, r), "days": d, "streak": streaks.get(r, 0)} for r, d in ranked]})
 
 @app.route("/api/speak", methods=["POST"])
 def speak():
@@ -345,4 +382,4 @@ def speak():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
-    app.run(debug=False, host='0.0.0.0', port=port)
+    app.run(debug=False, host="0.0.0.0", port=port)
