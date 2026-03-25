@@ -140,6 +140,7 @@ window.onload = function() {
     ).catch(function() {
       document.getElementById("qr-status").textContent = "Camera not available. Use manual entry.";
     });
+    speak("Please scan QR code or enter session ID");
   } catch(e) {
     document.getElementById("qr-status").textContent = "Camera not available. Use manual entry.";
   }
@@ -186,6 +187,7 @@ function loadChallenge() {
   fetch("/api/challenge").then(function(r){return r.json();}).then(function(d) {
     challenge = d;
     document.getElementById("challenge-text").textContent = d.question;
+    speak("Solve the following challenge");
   }).catch(function() {
     challenge = {type:"math", question:"What is 5 plus 3?", answer:"8"};
     document.getElementById("challenge-text").textContent = challenge.question;
@@ -196,6 +198,7 @@ document.getElementById("readybtn").addEventListener("click", function() {
   document.getElementById("say-this-text").textContent =
     "I am [Your Name]. " + (challenge.type==="repeat" ? challenge.answer : "The answer is " + challenge.answer);
   showStep("step-verify");
+  speak("Speak your name and answer clearly");
 });
 
 document.getElementById("record-btn").addEventListener("click", startRecording);
@@ -290,6 +293,7 @@ function verifyAttendance() {
         document.getElementById("streak-badge").textContent = "🔥 " + data.streak + " day streak";
         document.getElementById("rank-badge").textContent = "🏆 Rank #" + data.leaderboard_rank;
         document.getElementById("confirmation-text").textContent = data.confirmation;
+        speak("Attendance marked successfully");
         if (data.late) {
           document.getElementById("late-badge").classList.remove("hidden");
           document.getElementById("late-badge").textContent = "⏰ Late arrival";
@@ -303,6 +307,7 @@ function verifyAttendance() {
         document.getElementById("result-success").classList.add("hidden");
         document.getElementById("result-suspicious").classList.add("hidden");
         document.getElementById("fail-reason").textContent = data.reason;
+        speak("Verification failed, please try again");
       }
     }).catch(function() {
       document.getElementById("processing").classList.add("hidden");

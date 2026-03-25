@@ -3,6 +3,9 @@ import uuid, time, random, os
 from datetime import datetime, timedelta
 from collections import defaultdict
 import numpy as np
+import requests as req
+from dotenv import load_dotenv
+load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = "voice_attendance_secret_2024"
@@ -15,6 +18,7 @@ leaderboard = {}
 mood_log = {}
 failed_attempts = defaultdict(int)
 parent_alerts = {}
+TTS_CACHE = {}  # {text: audio_url}
 
 # Student list — roll_no → name
 STUDENT_REGISTRY = {}  # {"CS001": "Rahul Kumar", "CS002": "Priya Sharma"}
@@ -365,18 +369,36 @@ def get_leaderboard():
 
 @app.route("/api/speak", methods=["POST"])
 def speak():
-    import requests as req
     data = request.json
-    text = data.get("text", "")
+    text = data.get("text", "").strip()
+    if not text:
+        return jsonify({"error": "No text provided"}), 400
+    
+    # Check cache
+    if text in TTS_CACHE:
+        return jsonify({"audio_url": TTS_CACHE[text], "text": text, "cached": True})
+
+    if not MURF_API_KEY or MURF_API_KEY == "YOUR_MURF_API_KEY_HERE":
+        return jsonify({"error": "Murf API Key not configured", "text": text}), 500
+
     try:
         resp = req.post(
             "https://api.murf.ai/v1/speech/generate",
             headers={"api-key": MURF_API_KEY, "Content-Type": "application/json"},
-            json={"voiceId": "en-IN-aarav", "text": text, "modelVersion": "GEN2", "format": "MP3"},
+            json={
+                "voiceId": "en-IN-aarav", 
+                "text": text, 
+                "modelVersion": "GEN2", 
+                "format": "MP3"
+            },
             timeout=10
         )
+        resp.raise_for_status()
         result = resp.json()
-        return jsonify({"audio_url": result.get("audioFile", ""), "text": text})
+        audio_url = result.get("audioFile", "")
+        if audio_url:
+            TTS_CACHE[text] = audio_url
+        return jsonify({"audio_url": audio_url, "text": text})
     except Exception as e:
         return jsonify({"error": str(e), "text": text}), 500
 
