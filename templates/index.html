@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Voice Smart Attendance</title>
+<title>VoxAttend - AI Powered Voice Smart Attendance</title>
 <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body class="home-page">
 <div class="hero">
   <div class="hero-icon">🎙️</div>
-  <h1>Voice Smart Attendance</h1>
-  <p class="subtitle">Proxy-proof · Voice-first · Zero app install</p>
+  <h1>VoxAttend</h1>
+  <p class="subtitle">AI Powered Voice Smart Attendance</p>
   <div class="hero-cards">
     <a href="/teacher" class="card card-teacher">
       <div class="card-icon">👨‍🏫</div>
@@ -32,5 +32,15 @@
   
   </div>
 </div>
+<script src="/static/js/murf.js"></script>
+<script>
+window.addEventListener("load", () => {
+    setTimeout(() => {
+        if (typeof speak === "function") {
+            speak("Welcome to VoxAttend");
+        }
+    }, 800);
+});
+</script>
 </body>
 </html>

@@ -20,24 +20,24 @@ async function speak(text, lang = "en-IN") {
           transition: opacity 0.3s ease;
         }
         .tts-pill {
-          background: rgba(255, 255, 255, 0.1);
-          backdrop-filter: blur(10px);
-          -webkit-backdrop-filter: blur(10px);
-          border: 1px solid rgba(255, 255, 255, 0.2);
-          padding: 8px 16px;
-          border-radius: 20px;
+          background: rgba(26, 26, 46, 0.9);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+          border: 1px solid rgba(99, 102, 241, 0.4);
+          padding: 10px 20px;
+          border-radius: 100px;
           display: flex;
           align-items: center;
-          gap: 8px;
-          box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+          gap: 10px;
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
           color: white;
           font-family: inherit;
+          animation: tts-glow 1.5s ease-in-out infinite alternate;
         }
-        .tts-icon { animation: tts-pulse 1s infinite; }
-        @keyframes tts-pulse {
-          0% { transform: scale(1); opacity: 1; }
-          50% { transform: scale(1.2); opacity: 0.7; }
-          100% { transform: scale(1); opacity: 1; }
+        .tts-icon { font-size: 1.2rem; }
+        @keyframes tts-glow {
+          from { box-shadow: 0 0 10px rgba(99, 102, 241, 0.2), 0 8px 32px rgba(0, 0, 0, 0.5); border-color: rgba(99, 102, 241, 0.4); }
+          to { box-shadow: 0 0 25px rgba(99, 102, 241, 0.6), 0 8px 32px rgba(0, 0, 0, 0.5); border-color: rgba(99, 102, 241, 0.8); }
         }
       </style>
     `;
