@@ -59,7 +59,7 @@ Security is built into the architecture of VoxAttend:
 ---
 
 ## 🎥 Demo Video
-[Watch VoxAttend in Action](#)
+[https://youtu.be/WGYfHxxEAAs?si=C2yFEFonlpdrkw7S](#)
 
 ---
 
