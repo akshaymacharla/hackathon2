@@ -1,46 +1,80 @@
-# VoxAttend - AI Powered Voice Smart Attendance 🎙️✨
+# VoxAttend — AI Powered Voice Smart Attendance System 🎙️✨
 
-**VoxAttend** is a proxy-proof, voice-first smart attendance system designed for modern classrooms. It eliminates proxy attendance using real-time voice verification and browser-focus detection, ensuring that the student marking attendance is actually present and engaged.
+> **Proxy-proof · Voice-first · AI-powered**
+
+VoxAttend is a cutting-edge, voice-first attendance system designed to eliminate proxy attendance in modern classrooms. By combining **Murf AI’s** high-fidelity voice synthesis with real-time browser focus detection and voice verification, VoxAttend ensures that every attendance entry is authentic and verified.
 
 ---
 
-## 🚀 Key Features
+## 🚀 Features
 
-### 🎙️ AI-Powered Voice Verification
-Integrates **Murf AI** for high-quality, natural system voice responses. Every student interaction is guided by a friendly AI voice, making the process seamless and "app-free."
+### 👨‍🏫 Teacher Workflow
+- **One-Click Session**: Instantly generate a dynamic attendance QR code.
+- **Voice Query Dashboard**: Use natural language to ask "Who is absent?" or "Show leaderboard."
+- **Live Stats**: Real-time tracking of present/absent counts and rates.
+- **Parent Alerts**: Automatic flagging and report generation for frequent absentees.
 
-### 🛡️ Anti-Proxy Technology
-- **Live Voice Challenge**: Students must speak a unique, time-sensitive phrase to verify their identity.
-- **Focus Detection**: The system automatically terminates attendance sessions if the student attempts to switch tabs or minimize the browser.
-- **Voice Fingerprinting**: Uses voice similarity analysis to match the student's voice against their registered profile.
+### 👨‍🎓 Student Workflow
+- **Zero App Install**: Web-based scanning and verification via browser.
+- **Voice Challenge**: Dynamic phrases that must be spoken to confirm presence.
+- **Gamified Progress**: Tracking attendance streaks and mood reports.
 
-### 👨‍🏫 Teacher Dashboard & Voice Queries
-Teachers can manage attendance with ease:
-- **Natural Language Queries**: Simply ask, "Who is absent today?" or "How many students are present?" to get instant audio/visual responses.
-- **Weekly Analytics**: Visualized attendance rates and trends.
-- **Parent Alerts**: Automatic flagging of students with frequent absences.
+---
 
-### 🏆 Gamified Experience
-- **Attendance Streaks**: Encourages regular attendance with visual streaks and leaderboards.
-- **Mood Tracker**: Captures student sentiment daily for better classroom engagement.
+## 🧠 How it Works (API Usage)
+
+VoxAttend relies on a robust set of APIs to ensure security and accessibility.
+
+### 🎙️ Murf AI API
+VoxAttend uses the **Murf AI Text-to-Speech API** to provide high-quality, natural system instructions and feedback.
+
+- **Endpoint**: `POST /api/speak`
+- **Request Format**:
+  ```json
+  {
+    "text": "Welcome to VoxAttend. Please scan the QR code to begin."
+  }
+  ```
+- **Response**: MP3/WAV Audio Stream (or cached URL).
+
+**Usage in VoxAttend:**
+1. **Instructional Voice**: Guides students through the scanning and recording process.
+2. **Instant Feedback**: Provides immediate voice confirmation for success or failure ("Verification Successful," "Access Denied").
+3. **Teacher Queries**: Reads out attendance summaries and mood reports to teachers.
+
+### 🧱 Core Endpoints
+- `/api/start-session`: Generates a new unique `session_id` and starts the 60s timer.
+- `/api/validate-session`: Checks if a scanned `session_id` is still active and valid.
+- `/api/challenge`: Provides a unique voice phrase for the student to repeat.
+- `/api/verify`: Analyzes uploaded audio against the student's voice profile using Resemblyzer.
+
+---
+
+## 🔒 Security & Privacy
+Security is built into the architecture of VoxAttend:
+- **Environment Variables**: Sensitive credentials like `MURF_API_KEY` and `TEACHER_PASSWORD` are stored in a `.env` file.
+- **Git Protection**: The `.env` file is explicitly excluded from version control via `.gitignore` to prevent accidental credential leakage.
+- **Anti-Proxy Logic**: Browser focus detection terminates sessions if a student attempts to minimize the window or switch tabs.
+
+---
+
+## 🎥 Demo Video
+[Watch VoxAttend in Action](#)
 
 ---
 
 ## 🛠️ Tech Stack
-
-- **Frontend**: HTML5, Vanilla JavaScript, CSS3 (Modern Glassmorphism Design).
-- **Backend**: Python Flask.
-- **AI/ML Integration**:
-  - **Murf AI**: High-fidelity Text-to-Speech (TTS).
-  - **Web Speech API**: Browser-native Speech-to-Text (STT).
-  - **Resemblyzer**: Voice similarity and verification.
-- **Database**: JSON-based persistent storage (for hackathon-ready portability).
+- **Backend**: Python Flask
+- **Frontend**: HTML5, CSS3 (Modern Glassmorphism), Vanilla JavaScript
+- **Voice Synthesis**: Murf AI (TTS)
+- **Voice Recognition**: Web Speech API (STT) & MediaRecorder API
+- **Data Analysis**: NumPy & Resemblyzer (Voice Similarity)
 
 ---
 
-## ⚙️ Installation & Setup
+## ⚙️ Setup Instructions
 
-### 1. Clone the Repository
+### 1. Clone the Repo
 ```bash
 git clone https://github.com/akshaymacharla/hackathon3.git
 cd voice-attendance
@@ -51,36 +85,23 @@ cd voice-attendance
 pip install -r requirements.txt
 ```
 
-### 3. Configure API Keys
-Create a `.env` file in the root directory and add your Murf AI API key:
+### 3. Configure Environment
+Create a `.env` file in the root directory:
 ```env
 MURF_API_KEY=your_murf_api_key_here
 TEACHER_PASSWORD=teacher123
 ```
 
-### 4. Run the Application
+### 4. Run the App
 ```bash
 python app.py
 ```
-Visit `http://127.0.0.1:10000` in your browser.
+Open `http://127.0.0.1:10000` to access the portal.
 
 ---
 
-## 📝 How to Use
-
-### For Students
-1. Scan the **Attendance QR Code** generated by the teacher.
-2. Listen to the **VoxAttend Welcome**.
-3. Speak the displayed **Voice Challenge** phrase.
-4. Look for the **Success** confirmation after verification.
-
-### For Teachers
-1. Login to the **Teacher Portal**.
-2. Start an **Attendance Session** to generate a dynamic QR code.
-3. Use the **Voice Query Dashboard** to ask questions about the current session.
-4. Click **Finalize** to mark absentees and generate alerts.
+## ⚠️ Important Note
+This project leverages **Murf AI** for generating natural, premium voice responses. A valid API key is required in the environment variables for full functionality.
 
 ---
-
-## 🌟 Acknowledgments
-Built with ❤️ for the **Hackathon**. Leveraging **Murf AI** for natural voice interactions.
+Built with ❤️ for the Hackathon. 🎙️
